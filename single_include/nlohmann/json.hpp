@@ -5553,6 +5553,59 @@ class binary_reader
 
 namespace nlohmann
 {
+
+// Customization points
+template<typename number_unsigned_t>
+bool lexer_convert_unsigned(number_unsigned_t& out, const char* buffer)
+{
+    char* endptr;
+    const auto x = std::strtoull(buffer, &endptr, 10);
+    //assert(endptr == buffer.data() + buffer.size());
+    out = static_cast<number_unsigned_t>(x);
+    return errno == 0 && out == x;
+}
+
+template <typename number_integer_t>
+bool lexer_convert_integer(number_integer_t& out, const char* buffer)
+{
+    char* endptr;
+    const auto x = std::strtoll(buffer, &endptr, 10);
+    //assert(endptr == buffer.data() + buffer.size());
+    out = static_cast<number_integer_t>(x);
+    return errno == 0 && out == x;
+}
+
+template <typename number_float_t>
+bool lexer_convert_float(number_float_t& out, const char* buffer);
+
+template<>
+inline bool lexer_convert_float<float>(float& out, const char* buffer)
+{
+    char* endptr;
+    out = std::strtof(buffer, &endptr);
+    // assert(endptr == buffer.data() + buffer.size());
+    return true;
+}
+
+template<>
+inline bool lexer_convert_float<double>(double& out, const char* buffer)
+{
+    char* endptr;
+    out = std::strtod(buffer, &endptr);
+    //assert(endptr == buffer.data() + buffer.size());
+    return true;
+}
+
+template<>
+inline bool lexer_convert_float<long double>(long double& out, const char* buffer)
+{
+    char* endptr;
+    out = std::strtold(buffer, &endptr);
+    //assert(endptr == buffer.data() + buffer.size());
+    return true;
+}
+
+
 namespace detail
 {
 ///////////
@@ -6352,21 +6405,6 @@ class lexer
         }
     }
 
-    static void strtof(float& f, const char* str, char** endptr) noexcept
-    {
-        f = std::strtof(str, endptr);
-    }
-
-    static void strtof(double& f, const char* str, char** endptr) noexcept
-    {
-        f = std::strtod(str, endptr);
-    }
-
-    static void strtof(long double& f, const char* str, char** endptr) noexcept
-    {
-        f = std::strtold(str, endptr);
-    }
-
     /*!
     @brief scan a number literal
 
@@ -6691,44 +6729,22 @@ scan_number_done:
         // try to parse integers first and fall back to floats
         if (number_type == token_type::value_unsigned)
         {
-            const auto x = std::strtoull(token_buffer.data(), &endptr, 10);
-
-            // we checked the number format before
-            assert(endptr == token_buffer.data() + token_buffer.size());
-
-            if (errno == 0)
+            if (lexer_convert_unsigned<number_unsigned_t>(value_unsigned, token_buffer.data()))
             {
-                value_unsigned = static_cast<number_unsigned_t>(x);
-                if (value_unsigned == x)
-                {
-                    return token_type::value_unsigned;
-                }
+                return token_type::value_unsigned;
             }
         }
         else if (number_type == token_type::value_integer)
         {
-            const auto x = std::strtoll(token_buffer.data(), &endptr, 10);
-
-            // we checked the number format before
-            assert(endptr == token_buffer.data() + token_buffer.size());
-
-            if (errno == 0)
+            if (lexer_convert_integer<number_integer_t>(value_integer, token_buffer.data()))
             {
-                value_integer = static_cast<number_integer_t>(x);
-                if (value_integer == x)
-                {
-                    return token_type::value_integer;
-                }
+                return token_type::value_integer;
             }
         }
 
         // this code is reached if we parse a floating-point number or if an
         // integer conversion above failed
-        strtof(value_float, token_buffer.data(), &endptr);
-
-        // we checked the number format before
-        assert(endptr == token_buffer.data() + token_buffer.size());
-
+        lexer_convert_float(value_float, token_buffer.data());
         return token_type::value_float;
     }
 
